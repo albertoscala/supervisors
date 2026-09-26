@@ -16,12 +16,12 @@
 static volatile sig_atomic_t stop;
 static void on_sigint(int sig) { stop = 1; }
 
-static char *trim(char *s)
+static char* trim(char* s)
 {
     while (isspace((unsigned char)*s))
         s++;
 
-    char *end = s + strlen(s);
+    char* end = s + strlen(s);
     while (end > s && isspace((unsigned char)end[-1]))
         end--;
     *end = '\0';
@@ -29,9 +29,9 @@ static char *trim(char *s)
     return s;
 }
 
-static int load_whitelist(__u32 *whitelist, __u32 *count, const char *path)
+static int load_whitelist(__u32 *whitelist, __u32* count, const char* path)
 {
-    FILE *file = fopen(path, "r");
+    FILE* file = fopen(path, "r");
     if (!file) {
         fprintf(stderr, "cannot open %s\n", path);
         return 1;
