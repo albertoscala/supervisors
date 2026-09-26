@@ -1,6 +1,7 @@
 SRC = src/
 INCLUDE = include/
 BIN = bin/
+TEST = test/test_toll.py
 
 MODULE_DIR = module/
 LOADER_DIR = loader/
@@ -21,3 +22,6 @@ build: generate_skeleton
 
 run:
 	sudo ./$(LOADER_DIR)$(BIN)loader
+
+test: build
+	sudo python3 $(TEST) $(LOADER_DIR)$(BIN)loader
