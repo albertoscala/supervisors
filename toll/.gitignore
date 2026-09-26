@@ -1,0 +1,4 @@
+loader/bin/loader
+module/bin/module.bpf.o
+module/include/vmlinux.h
+loader/include/module.skel.h
