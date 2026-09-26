@@ -111,14 +111,14 @@ int guardian_mprotect(struct vm_area_struct* vma, unsigned long reqprot, unsigne
     bool is_shared = vma->vm_flags & VM_SHARED; // VM_SHARED
     if (wants_exec && is_shared)
     {
-        bpf_printk("guardian: deny exec on MAP_SHARED region"); 
+        bpf_printk("[GUARDIAN] Deny PROT_EXEC on MAP_SHARED region"); 
         return -EPERM;
     } 
 
     // Wants exec, check if the process ever requested for write permissions
     if (any_page_ever_written(vma->vm_mm, vma->vm_start, vma->vm_end)) 
     {
-        bpf_printk("guardian: deny exec, region was written before");
+        bpf_printk("[GUARDIAN] Deny PROT_EXEC, region has been PROT_WRITE in past");
         return -EPERM;
     }
 
@@ -148,10 +148,10 @@ int guardian_execve(struct linux_binprm* bprm)
 {
     if (is_whitelisted(whitelisted_bins, whitelisted_bins_count, bprm->file->f_inode->i_ino))
     {
-        bpf_printk("EXECUTION ALLOWED FOR %s (%llu)\n", &bprm->filename, bprm->file->f_inode->i_ino);
+        bpf_printk("[GUARDIAN] Execution allowed for %s (%llu)\n", &bprm->filename, bprm->file->f_inode->i_ino);
         return 0;
     }
 
-    bpf_printk("EXECUTION BLOCKED FOR %s (%llu)\n", bprm->filename, bprm->file->f_inode->i_ino);
+    bpf_printk("[GUARDIAN] Execution allowed for %s (%llu)\n", bprm->filename, bprm->file->f_inode->i_ino);
     return -EPERM;
 }

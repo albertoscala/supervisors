@@ -40,17 +40,15 @@ int on_arrival(struct __sk_buff* skb)
     struct iphdr *ip = (void *)(eth + 1);
     if ((void *)(ip + 1) > data_end)
         return TC_ACT_OK;
-
-    bpf_printk("IN: %pI4 -> %pI4", &ip->saddr, &ip->daddr);
     
     // Big Endian (Network Order)
     if (is_whitelisted(whitelisted_arrivals, whitelisted_arrivals_count, ip->saddr))
     {
-        bpf_printk("ALLOWED => IN: %pI4 -> %pI4", &ip->saddr, &ip->daddr);
+        bpf_printk("[TOLL] Inbound connection allowed: %pI4 => %pI4", &ip->saddr, &ip->daddr);
         return TC_ACT_OK;      // in the list -> let it through
     }
 
-    bpf_printk("BLOCKED => IN: %pI4 -> %pI4", &ip->saddr, &ip->daddr);
+    bpf_printk("[TOLL] Inbound connection blocked: %pI4 => %pI4", &ip->saddr, &ip->daddr);
     return TC_ACT_SHOT;        // not in the list -> drop
 }
 
@@ -73,10 +71,10 @@ int on_departure(struct __sk_buff* skb)
     // Big Endian (Network Order)
     if (is_whitelisted(whitelisted_departures, whitelisted_departures_count, ip->daddr))
     {
-        bpf_printk("ALLOWED => OUT: %pI4 -> %pI4", &ip->saddr, &ip->daddr);
+        bpf_printk("[TOLL] Outbound connection allowed: %pI4 => %pI4", &ip->saddr, &ip->daddr);
         return TC_ACT_OK;
     }
 
-    bpf_printk("BLOCKED => OUT: %pI4 -> %pI4", &ip->saddr, &ip->daddr);
+    bpf_printk("[TOLL] Outbound connection blocked: %pI4 => %pI4", &ip->saddr, &ip->daddr);
     return TC_ACT_SHOT;
 }
