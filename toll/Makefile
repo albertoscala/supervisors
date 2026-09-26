@@ -6,7 +6,15 @@ TEST = test/test_toll.py
 MODULE_DIR = module/
 LOADER_DIR = loader/
 
-create_kernel_type_definition: 
+prepare:
+	mkdir -p $(MODULE_DIR)$(SRC)
+	mkdir -p $(MODULE_DIR)$(INCLUDE)
+	mkdir -p $(MODULE_DIR)$(BIN)
+	mkdir -p $(LOADER_DIR)$(SRC)
+	mkdir -p $(LOADER_DIR)$(INCLUDE)
+	mkdir -p $(LOADER_DIR)$(BIN)
+
+create_kernel_type_definition: prepare
 	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $(MODULE_DIR)$(INCLUDE)vmlinux.h
 
 compile_module: create_kernel_type_definition
