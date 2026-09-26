@@ -17,7 +17,7 @@ generate_skeleton: compile_module
 
 # create final program loader linked with blob of the bpf 
 build: generate_skeleton
-	clang -O2 $(LOADER_DIR)$(SRC)loader.cpp -lbpf -lelf -lz -o $(LOADER_DIR)$(BIN)loader
+	clang -O2 $(LOADER_DIR)$(SRC)loader.c -lbpf -lelf -lz -o $(LOADER_DIR)$(BIN)loader
 
 run:
 	sudo ./$(LOADER_DIR)$(BIN)loader
