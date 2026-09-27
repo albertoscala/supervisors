@@ -1,22 +1,76 @@
 #include "../include/vmlinux.h"
 #include <bpf/bpf_helpers.h>
 #include <linux/errno.h>
+#include <bpf/bpf_tracing.h>
+
+#ifndef PROT_READ
+#define PROT_READ   0x1
+#endif
+#ifndef PROT_WRITE
+#define PROT_WRITE  0x2
+#endif
+#ifndef PROT_EXEC
+#define PROT_EXEC   0x4
+#endif
+
+#ifndef VM_READ
+#define VM_READ     0x00000001
+#endif
+#ifndef VM_WRITE
+#define VM_WRITE    0x00000002
+#endif
+#ifndef VM_EXEC
+#define VM_EXEC     0x00000004
+#endif
+#ifndef VM_SHARED
+#define VM_SHARED   0x00000008
+#endif
+
+#ifndef MAP_SHARED
+#define MAP_SHARED	0x01
+#endif
+
+#define LOW_ADDR_THRESHOLD 0x100000UL // 1 MB
 
 char LICENSE[] SEC("license") = "GPL";
 
 // MMAP_FILE
 
 SEC("lsm/mmap_file")
-int guardian_mmap_file(struct file* file, unsigned long reqprot, unsigned long prot, unsigned long flags)
+int BPF_PROG(guardian_mmap_file, struct file* file, unsigned long reqprot, unsigned long prot, unsigned long flags)
 {
+    bool wants_write = prot & PROT_WRITE;
+    bool wants_exec  = prot & PROT_EXEC;
+    bool is_shared   = flags & MAP_SHARED;
+
+    if (wants_write && wants_exec) 
+    {
+        bpf_printk("[GUARDIAN] Deny direct RWX mmap\n");
+        return -EPERM;
+    }
+
+    if (is_shared && wants_exec) 
+    {
+        bpf_printk("[GUARDIAN] Deny EXEC mmap on MAP_SHARED\n");
+        return -EPERM;
+    }
+
+    // Can't block EXEC only requests might be too strict
+
     return 0;
 }
 
 // MMAP_ADDR
 
 SEC("lsm/mmap_addr")
-int guardian_mmap_addr(unsigned long addr)
+int BPF_PROG(guardian_mmap_addr, unsigned long addr)
 {
+    if (addr < LOW_ADDR_THRESHOLD)
+    {
+        bpf_printk("[GUARDIAN] Deny low-address mapping at 0x%lx\n", addr); 
+        return -EPERM;
+    }
+
     return 0;
 }
 
@@ -73,31 +127,8 @@ static __always_inline bool any_page_ever_written(struct mm_struct* mm, unsigned
     return false;
 }
 
-#ifndef PROT_READ
-#define PROT_READ   0x1
-#endif
-#ifndef PROT_WRITE
-#define PROT_WRITE  0x2
-#endif
-#ifndef PROT_EXEC
-#define PROT_EXEC   0x4
-#endif
-
-#ifndef VM_READ
-#define VM_READ     0x00000001
-#endif
-#ifndef VM_WRITE
-#define VM_WRITE    0x00000002
-#endif
-#ifndef VM_EXEC
-#define VM_EXEC     0x00000004
-#endif
-#ifndef VM_SHARED
-#define VM_SHARED   0x00000008
-#endif
-
 SEC("lsm/file_mprotect")
-int guardian_mprotect(struct vm_area_struct* vma, unsigned long reqprot, unsigned long prot)
+int BPF_PROG(guardian_mprotect, struct vm_area_struct* vma, unsigned long reqprot, unsigned long prot)
 {
     // Wants to write, sure but annotate
     bool wants_write = prot & PROT_WRITE;
@@ -111,14 +142,22 @@ int guardian_mprotect(struct vm_area_struct* vma, unsigned long reqprot, unsigne
     bool is_shared = vma->vm_flags & VM_SHARED; // VM_SHARED
     if (wants_exec && is_shared)
     {
-        bpf_printk("[GUARDIAN] Deny PROT_EXEC on MAP_SHARED region"); 
+        bpf_printk("[GUARDIAN] Deny PROT_EXEC on MAP_SHARED region\n"); 
         return -EPERM;
     } 
+
+    // Currently writable
+    bool is_curr_writable = vma->vm_flags & VM_WRITE;
+    if (is_curr_writable)
+    {
+        bpf_printk("[GUARDIAN] Deny PROT_EXEC, region is currently PROT_WRITE\n");
+        return -EPERM;
+    }
 
     // Wants exec, check if the process ever requested for write permissions
     if (any_page_ever_written(vma->vm_mm, vma->vm_start, vma->vm_end)) 
     {
-        bpf_printk("[GUARDIAN] Deny PROT_EXEC, region has been PROT_WRITE in past");
+        bpf_printk("[GUARDIAN] Deny PROT_EXEC, region has been PROT_WRITE in past\n");
         return -EPERM;
     }
 
@@ -132,26 +171,26 @@ int guardian_mprotect(struct vm_area_struct* vma, unsigned long reqprot, unsigne
 __u64 whitelisted_bins[MAX_BINS];
 __u32 whitelisted_bins_count;
 
-static __always_inline int is_whitelisted(__u64* whitelist, __u32 count, __u64 ino)
+static __always_inline bool is_whitelisted(__u64* whitelist, __u32 count, __u64 ino)
 {
     for (int i = 0; i < MAX_BINS; i++)
     {
         if (i >= count) break;
-        if (whitelist[i] == ino) return 1;
+        if (whitelist[i] == ino) return true;
     }
 
-    return 0;
+    return false;
 }
 
 SEC("lsm/bprm_check_security")
-int guardian_execve(struct linux_binprm* bprm)
+int BPF_PROG(guardian_execve, struct linux_binprm* bprm)
 {
     if (is_whitelisted(whitelisted_bins, whitelisted_bins_count, bprm->file->f_inode->i_ino))
     {
-        bpf_printk("[GUARDIAN] Execution allowed for %s (%llu)\n", &bprm->filename, bprm->file->f_inode->i_ino);
+        bpf_printk("[GUARDIAN] Execution allowed for %s (%llu)\n", bprm->filename, bprm->file->f_inode->i_ino);
         return 0;
     }
 
-    bpf_printk("[GUARDIAN] Execution allowed for %s (%llu)\n", bprm->filename, bprm->file->f_inode->i_ino);
+    bpf_printk("[GUARDIAN] Execution blocked for %s (%llu)\n", bprm->filename, bprm->file->f_inode->i_ino);
     return -EPERM;
 }
