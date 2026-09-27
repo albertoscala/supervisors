@@ -34,6 +34,8 @@
 
 char LICENSE[] SEC("license") = "GPL";
 
+// #define ENFORCE
+
 // MMAP_FILE
 
 SEC("lsm/mmap_file")
@@ -46,13 +48,21 @@ int BPF_PROG(guardian_mmap_file, struct file* file, unsigned long reqprot, unsig
     if (wants_write && wants_exec) 
     {
         bpf_printk("[GUARDIAN] Deny direct RWX mmap\n");
+#ifdef ENFORCE
         return -EPERM;
+#else
+        return 0;
+#endif
     }
 
     if (is_shared && wants_exec) 
     {
         bpf_printk("[GUARDIAN] Deny EXEC mmap on MAP_SHARED\n");
+#ifdef ENFORCE
         return -EPERM;
+#else
+        return 0;
+#endif
     }
 
     // Can't block EXEC only requests might be too strict
@@ -68,7 +78,11 @@ int BPF_PROG(guardian_mmap_addr, unsigned long addr)
     if (addr < LOW_ADDR_THRESHOLD)
     {
         bpf_printk("[GUARDIAN] Deny low-address mapping at 0x%lx\n", addr); 
+#ifdef ENFORCE
         return -EPERM;
+#else
+        return 0;
+#endif
     }
 
     return 0;
@@ -143,7 +157,11 @@ int BPF_PROG(guardian_mprotect, struct vm_area_struct* vma, unsigned long reqpro
     if (wants_exec && is_shared)
     {
         bpf_printk("[GUARDIAN] Deny PROT_EXEC on MAP_SHARED region\n"); 
+#ifdef ENFORCE
         return -EPERM;
+#else
+        return 0;
+#endif    
     } 
 
     // Currently writable
@@ -151,14 +169,22 @@ int BPF_PROG(guardian_mprotect, struct vm_area_struct* vma, unsigned long reqpro
     if (is_curr_writable)
     {
         bpf_printk("[GUARDIAN] Deny PROT_EXEC, region is currently PROT_WRITE\n");
+#ifdef ENFORCE
         return -EPERM;
+#else
+        return 0;
+#endif
     }
 
     // Wants exec, check if the process ever requested for write permissions
     if (any_page_ever_written(vma->vm_mm, vma->vm_start, vma->vm_end)) 
     {
         bpf_printk("[GUARDIAN] Deny PROT_EXEC, region has been PROT_WRITE in past\n");
+#ifdef ENFORCE
         return -EPERM;
+#else
+        return 0;
+#endif
     }
 
     return 0;
@@ -192,5 +218,9 @@ int BPF_PROG(guardian_execve, struct linux_binprm* bprm)
     }
 
     bpf_printk("[GUARDIAN] Execution blocked for %s (%llu)\n", bprm->filename, bprm->file->f_inode->i_ino);
-    return -EPERM;
+#ifdef ENFORCE
+        return -EPERM;
+#else
+        return 0;
+#endif
 }
